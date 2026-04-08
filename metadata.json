@@ -1,0 +1,5 @@
+{
+  "name": "ClimaTransmute",
+  "description": "Sistema de ETL e Validação de Dados Climáticos para extração e mapeamento de planilhas.",
+  "requestFramePermissions": []
+}
