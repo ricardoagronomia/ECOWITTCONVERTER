@@ -365,7 +365,7 @@ export default function App() {
             Ecowitt<span className="bg-[#141414] text-[#F5F5F5] px-2">Converter</span>
           </h1>
           <p className="text-sm font-bold mt-2 opacity-80 uppercase tracking-wider">
-            Conversor de Dados Climáticos (CSV → XLSX)
+            Conversor de Dados Climáticos (CSV/Excel → XLSX)
           </p>
         </div>
         <div className="flex flex-col items-end">
@@ -378,10 +378,10 @@ export default function App() {
           </div>
         </div>
       </header>
-
+ 
       <main className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
-          <Card title="1. Upload do Arquivo Ecowitt (CSV)">
+          <Card title="1. Upload do Arquivo Ecowitt (CSV / XLS / XLSX)">
             <div 
               className={`border-2 border-dashed border-[#141414] p-12 text-center transition-colors ${sourceFile ? 'bg-green-50' : 'hover:bg-[#E4E3E0]'}`}
               onDragOver={(e) => e.preventDefault()}
@@ -406,18 +406,18 @@ export default function App() {
               ) : (
                 <>
                   <Upload className="mx-auto mb-4" size={48} />
-                  <p className="text-sm font-bold uppercase tracking-widest">Arraste o CSV da Ecowitt aqui</p>
+                  <p className="text-sm font-bold uppercase tracking-widest">Arraste o arquivo CSV ou Excel (.xls, .xlsx) da Ecowitt aqui</p>
                   <p className="text-[10px] opacity-50 mt-2">O sistema ignorará a primeira linha de categorias automaticamente</p>
                   <input 
                     type="file" 
                     className="hidden" 
                     id="source-file" 
-                    accept=".csv"
+                    accept=".csv,.xls,.xlsx"
                     onChange={handleFileUpload}
                     ref={sourceInputRef}
                   />
                   <label htmlFor="source-file" className="mt-8 inline-block cursor-pointer bg-[#141414] text-white px-8 py-3 text-xs font-bold uppercase hover:bg-[#E4E3E0] hover:text-[#141414] transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] active:shadow-none active:translate-x-[2px] active:translate-y-[2px]">
-                    Selecionar CSV
+                    Selecionar Arquivo
                   </label>
                 </>
               )}
