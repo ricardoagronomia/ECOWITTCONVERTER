@@ -55,6 +55,25 @@ export default function App() {
     return isNaN(num) ? null : num;
   };
 
+  const getMode = (arr: any[]): any => {
+    if (arr.length === 0) return '';
+    const frequency: Record<string, number> = {};
+    let maxFreq = 0;
+    let modeVal = arr[0];
+    
+    arr.forEach(val => {
+      if (val === null || val === undefined || val === '') return;
+      const key = String(val).trim();
+      frequency[key] = (frequency[key] || 0) + 1;
+      if (frequency[key] > maxFreq) {
+        maxFreq = frequency[key];
+        modeVal = val;
+      }
+    });
+    
+    return modeVal;
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -128,11 +147,45 @@ export default function App() {
         }
       }
 
+      // 4. Wind Speed (Prefer Wind Speed, exclude Wind Gust)
+      let windSpeedIdx = -1;
+      for (let i = 0; i < headers.length; i++) {
+        const h = (headers[i] || '').toLowerCase();
+        const c = (categories[i] || '').toLowerCase();
+        if (
+          (h.includes('wind speed') || h.includes('windspeed') || h.includes('speed')) && 
+          !h.includes('gust') && !c.includes('gust')
+        ) {
+          windSpeedIdx = i;
+          break;
+        }
+      }
+      if (windSpeedIdx === -1) {
+        // Fallback: check anything containing speed
+        windSpeedIdx = headers.findIndex(h => h?.toLowerCase().includes('speed'));
+      }
+
+      // 5. Wind Direction
+      let windDirIdx = -1;
+      for (let i = 0; i < headers.length; i++) {
+        const h = (headers[i] || '').toLowerCase();
+        const c = (categories[i] || '').toLowerCase();
+        if (
+          h.includes('wind direction') || h.includes('wind dir') || h.includes('winddir') || h.includes('dir') || h.includes('direção') || h.includes('direcao') ||
+          c.includes('wind direction') || c.includes('wind dir') || c.includes('direção')
+        ) {
+          windDirIdx = i;
+          break;
+        }
+      }
+
       // Validation check
       const missing = [];
       if (tempIdx === -1) missing.push('Temperature (Outdoor/Feels Like)');
       if (humIdx === -1) missing.push('Humidity (Outdoor)');
       if (rainIdx === -1) missing.push('Daily(mm)');
+      if (windSpeedIdx === -1) missing.push('Wind Speed');
+      if (windDirIdx === -1) missing.push('Wind Direction');
 
       if (missing.length > 0) {
         addLog(`Erro: Colunas não encontradas: ${missing.join(', ')}`, 'error');
@@ -144,12 +197,16 @@ export default function App() {
       addLog(`- Temp: "${headers[tempIdx]}" (Col ${tempIdx})`, 'success');
       addLog(`- Hum: "${headers[humIdx]}" (Col ${humIdx})`, 'success');
       addLog(`- Chuva: "${headers[rainIdx]}" (Col ${rainIdx})`, 'success');
+      addLog(`- Vento (Vel): "${headers[windSpeedIdx]}" (Col ${windSpeedIdx})`, 'success');
+      addLog(`- Vento (Dir): "${headers[windDirIdx]}" (Col ${windDirIdx})`, 'success');
 
       // Grouping logic
       const dailyGroups: Record<string, {
         rain: { val: number, time: number }[],
         temp: number[],
-        hum: number[]
+        hum: number[],
+        ws: number[],
+        wd: any[]
       }> = {};
 
       dataRows.forEach((row, idx) => {
@@ -164,16 +221,22 @@ export default function App() {
         const timestamp = d.getTime();
 
         if (!dailyGroups[dateKey]) {
-          dailyGroups[dateKey] = { rain: [], temp: [], hum: [] };
+          dailyGroups[dateKey] = { rain: [], temp: [], hum: [], ws: [], wd: [] };
         }
 
         const rain = parseNumber(row[rainIdx]);
         const temp = parseNumber(row[tempIdx]);
         const hum = parseNumber(row[humIdx]);
+        const wsVal = parseNumber(row[windSpeedIdx]);
+        const wdVal = row[windDirIdx];
 
         if (rain !== null) dailyGroups[dateKey].rain.push({ val: rain, time: timestamp });
         if (temp !== null) dailyGroups[dateKey].temp.push(temp);
         if (hum !== null) dailyGroups[dateKey].hum.push(hum);
+        if (wsVal !== null) dailyGroups[dateKey].ws.push(wsVal);
+        if (wdVal !== undefined && wdVal !== null && wdVal !== '') {
+          dailyGroups[dateKey].wd.push(wdVal);
+        }
       });
 
       // Calculate aggregates
@@ -196,13 +259,45 @@ export default function App() {
           ? values.hum.reduce((a, b) => a + b, 0) / values.hum.length 
           : null;
 
+        const ws_mean = values.ws.length > 0 
+          ? values.ws.reduce((a, b) => a + b, 0) / values.ws.length 
+          : null;
+
+        const ws_max = values.ws.length > 0 ? Math.max(...values.ws) : null;
+
+        // Circular mean for Wind Direction (if mostly degrees) or Mode (if mostly text)
+        let wd_prevailing: any = '';
+        if (values.wd.length > 0) {
+          const numericWds = values.wd.map(v => parseNumber(v)).filter((v): v is number => v !== null);
+          if (numericWds.length >= values.wd.length * 0.5) {
+            // Predominantly degrees, compute circular mean
+            let sinSum = 0;
+            let cosSum = 0;
+            numericWds.forEach(deg => {
+              const rad = (deg * Math.PI) / 180;
+              sinSum += Math.sin(rad);
+              cosSum += Math.cos(rad);
+            });
+            const avgRad = Math.atan2(sinSum / numericWds.length, cosSum / numericWds.length);
+            let avgDeg = (avgRad * 180) / Math.PI;
+            if (avgDeg < 0) avgDeg += 360;
+            wd_prevailing = Math.round(avgDeg) + '°';
+          } else {
+            // Predominantly strings (cardinal system)
+            wd_prevailing = getMode(values.wd);
+          }
+        }
+
         return {
           date,
           rain_mm: Number(rain_mm.toFixed(1)),
           tmax_c: tmax_c !== null ? Number(tmax_c.toFixed(1)) : '',
           tmin_c: tmin_c !== null ? Number(tmin_c.toFixed(1)) : '',
           tmean_c: tmean_c !== null ? Number(tmean_c.toFixed(1)) : '',
-          rh_mean: rh_mean !== null ? Number(rh_mean.toFixed(1)) : ''
+          rh_mean: rh_mean !== null ? Number(rh_mean.toFixed(1)) : '',
+          ws_mean: ws_mean !== null ? Number(ws_mean.toFixed(1)) : '',
+          ws_max: ws_max !== null ? Number(ws_max.toFixed(1)) : '',
+          wd_prevailing: wd_prevailing
         };
       }).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -212,7 +307,7 @@ export default function App() {
 
       // Auto-trigger download
       const ws = XLSX.utils.json_to_sheet(result, { 
-        header: ['date', 'rain_mm', 'tmax_c', 'tmin_c', 'tmean_c', 'rh_mean'] 
+        header: ['date', 'rain_mm', 'tmax_c', 'tmin_c', 'tmean_c', 'rh_mean', 'ws_mean', 'ws_max', 'wd_prevailing'] 
       });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Dados Climáticos");
@@ -340,7 +435,10 @@ export default function App() {
                       <th className="p-3 border-r border-white/20">T Max</th>
                       <th className="p-3 border-r border-white/20">T Min</th>
                       <th className="p-3 border-r border-white/20">T Mean</th>
-                      <th className="p-3">RH Mean</th>
+                      <th className="p-3 border-r border-white/20">RH Mean</th>
+                      <th className="p-3 border-r border-white/20">WS Mean</th>
+                      <th className="p-3 border-r border-white/20">WS Max</th>
+                      <th className="p-3">WD Prev.</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -351,7 +449,10 @@ export default function App() {
                         <td className="p-3 border-r border-[#141414]">{row.tmax_c}</td>
                         <td className="p-3 border-r border-[#141414]">{row.tmin_c}</td>
                         <td className="p-3 border-r border-[#141414]">{row.tmean_c}</td>
-                        <td className="p-3">{row.rh_mean}</td>
+                        <td className="p-3 border-r border-[#141414]">{row.rh_mean}</td>
+                        <td className="p-3 border-r border-[#141414]">{row.ws_mean}</td>
+                        <td className="p-3 border-r border-[#141414]">{row.ws_max}</td>
+                        <td className="p-3">{row.wd_prevailing}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -427,9 +528,10 @@ export default function App() {
             <ul className="space-y-2 opacity-80">
               <li>• Ignora 1ª linha (Categorias)</li>
               <li>• Agrupamento por Data (Time)</li>
-              <li>• Rain: Máximo de Daily(mm)</li>
-              <li>• Temp: Max, Min e Média</li>
+              <li>• Rain: Último registro válido de cada dia</li>
+              <li>• Temp: Max, Min e Média (Outdoor)</li>
               <li>• Humid: Média aritmética</li>
+              <li>• Vento: Média da Velocidade, Velocidade Máxima e Direção Predominante</li>
               <li>• Limpeza de caracteres especiais</li>
             </ul>
           </div>
